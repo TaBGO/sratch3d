@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scratch to 3D Audio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c28;
+    --accent: #7c6aff;
+    --accent2: #ff6a9b;
+    --accent3: #6affd4;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --border: #2a2a3a;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    z-index: 1;
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .logo {
+    width: 36px; height: 36px;
+    background: conic-gradient(from 0deg, var(--accent), var(--accent2), var(--accent3), var(--accent));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo svg { width: 20px; height: 20px; fill: white; }
+
+  header h1 {
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+  header span {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-left: auto;
+    letter-spacing: 0.1em;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    min-height: 0;
+  }
+
+  /* LEFT PANEL */
+  .panel-left {
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,106,255,0.06);
+  }
+  .dropzone input { display: none; }
+  .dropzone-icon {
+    width: 48px; height: 48px;
+    margin: 0 auto 0.75rem;
+    background: var(--surface2);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dropzone-icon svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.5; }
+  .dropzone p { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+  .dropzone strong { color: var(--text); font-weight: 500; }
+
+  /* File info */
+  .file-info {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+  }
+  .file-info .fname { font-family: var(--mono); color: var(--accent3); font-size: 0.75rem; word-break: break-all; }
+  .file-info .fmeta { color: var(--muted); margin-top: 0.25rem; }
+
+  /* Sprite list */
+  .sprite-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .sprite-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .sprite-item:hover { border-color: var(--accent); background: rgba(124,106,255,0.05); }
+  .sprite-item.active { border-color: var(--accent); background: rgba(124,106,255,0.1); }
+  .sprite-name { font-weight: 500; font-size: 0.85rem; }
+  .sprite-meta { font-size: 0.7rem; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+  .sprite-toggle {
+    width: 32px; height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .sprite-toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: transform 0.2s, background 0.2s;
+  }
+  .sprite-toggle.on { background: rgba(124,106,255,0.4); }
+  .sprite-toggle.on::after { transform: translateX(14px); background: var(--accent); }
+
+  /* Params */
+  .param-group { display: flex; flex-direction: column; gap: 0.75rem; }
+  .param-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.5rem; }
+  .param-label { font-size: 0.8rem; color: var(--text); }
+  .param-value { font-family: var(--mono); font-size: 0.75rem; color: var(--accent3); min-width: 40px; text-align: right; }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 4px;
+    grid-column: 1 / -1;
+  }
+
+  select, input[type=number] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    width: 100%;
+  }
+
+  /* RIGHT PANEL */
+  .panel-right {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Visualizer */
+  .visualizer-wrap {
+    position: relative;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  canvas#stage {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 4/3;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin: 0 auto;
+  }
+
+  .stage-overlay {
+    position: absolute;
+    top: 1.5rem; left: 50%;
+    transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 0.5rem;
+    pointer-events: none;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* Transport */
+  .transport {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .btn-play {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-play:hover { transform: scale(1.05); background: #6a58ee; }
+  .btn-play:disabled { background: var(--border); cursor: not-allowed; }
+  .btn-play svg { width: 18px; height: 18px; fill: white; }
+
+  .btn-stop {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-stop:hover { border-color: var(--accent2); }
+  .btn-stop svg { width: 14px; height: 14px; fill: var(--text); }
+
+  .time-display {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--accent3);
+    flex: 1;
+  }
+
+  .progress-wrap {
+    flex: 3;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    width: 0%;
+    pointer-events: none;
+  }
+
+  /* Log / info */
+  .log-panel {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    line-height: 1.8;
+    color: var(--muted);
+  }
+  .log-line { display: flex; gap: 0.75rem; }
+  .log-time { color: var(--accent); flex-shrink: 0; }
+  .log-msg.ok { color: var(--accent3); }
+  .log-msg.warn { color: #ffb347; }
+  .log-msg.err { color: var(--accent2); }
+  .log-msg.info { color: var(--muted); }
+
+  footer {
+    position: relative; z-index: 1;
+    border-top: 1px solid var(--border);
+    padding: 0.75rem 2.5rem;
+    display: flex; gap: 2rem; align-items: center;
+    font-size: 0.72rem; color: var(--muted);
+    font-family: var(--mono);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+    margin-right: 0.5rem;
+  }
+  .status-dot.active { background: var(--accent3); box-shadow: 0 0 6px var(--accent3); }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 0.75rem;
+    height: 100%;
+    color: var(--muted); font-size: 0.85rem; text-align: center;
+    padding: 2rem;
+  }
+  .empty-state svg { width: 40px; height: 40px; stroke: var(--border); fill: none; stroke-width: 1; }
+
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; }
+    .panel-left { border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <!-- <svg viewBox="0 0 20 20"><path d="M10 2 L18 6 L18 14 L10 18 L2 14 L2 6 Z"/><circle cx="10" cy="10" r="3"/></svg> -->
+	<svg viewBox="0 0 24 24"><path d="m23.227,11.026c-.536-.131-1.075.209-1.2.747l-.848,3.638-1.469-11.178c-.089-.715-.684-1.233-1.414-1.233h-.004c-.732.003-1.326.524-1.41,1.235l-1.682,13.51L13.416,1.286c-.079-.728-.675-1.255-1.416-1.255s-1.337.527-1.416,1.256l-1.784,16.458-1.681-13.504c-.085-.717-.683-1.238-1.415-1.241-.73,0-1.325.519-1.413,1.228l-1.47,11.184-.848-3.638c-.125-.538-.663-.87-1.2-.747-.538.125-.873.662-.747,1.2l1.559,6.693c.157.678.764,1.126,1.464,1.093.703-.035,1.256-.54,1.346-1.228l1.294-9.845,1.72,13.812c.086.729.687,1.257,1.43,1.257h.008c.747-.004,1.347-.538,1.425-1.27l1.729-15.957,1.729,15.956c.078.732.678,1.267,1.425,1.271h.008c.743,0,1.344-.527,1.429-1.249l1.721-13.819,1.294,9.845c.09.688.643,1.192,1.346,1.228.695.035,1.308-.415,1.464-1.093l1.559-6.693c.126-.538-.209-1.075-.747-1.2Z"/></svg>
+  </div>
+  <h1>SCRATCH SB3 TO 3D AUDIO</h1>
+</header>
+
+<main>
+  <!-- LEFT PANEL -->
+  <div class="panel-left">
+
+    <div>
+      <div class="section-label">Fichier Scratch</div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".sb3">
+        <div class="dropzone-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p><strong>Glisser un fichier .sb3</strong><br>ou cliquer pour sélectionner</p>
+      </div>
+      <div class="file-info" id="fileInfo">
+        <div class="fname" id="fileName"></div>
+        <div class="fmeta" id="fileMeta"></div>
+      </div>
+    </div>
+
+    <div id="spriteSection" style="display:none">
+      <div class="section-label">Sprites détectés</div>
+      <div class="sprite-list" id="spriteList"></div>
+    </div>
+
+    <div id="paramsSection" style="display:none">
+      <div class="section-label">Paramètres Audio 3D</div>
+      <div class="param-group">
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Distance max (m)</span>
+            <span class="param-value" id="distVal">10</span>
+          </div>
+          <input type="range" id="distRange" min="1" max="50" value="10" step="1">
+        </div>
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Hauteur Z (m)</span>
+            <span class="param-value" id="heightVal">0</span>
+          </div>
+          <input type="range" id="heightRange" min="-10" max="10" value="0" step="0.5">
+        </div>
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Volume global</span>
+            <span class="param-value" id="volVal">80%</span>
+          </div>
+          <input type="range" id="volRange" min="0" max="100" value="80" step="1">
+        </div>
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Type d'onde</span>
+          </div>
+          <select id="waveType">
+            <option value="sine">Sine — doux</option>
+            <option value="triangle">Triangle — chaud</option>
+            <option value="square">Square — électro</option>
+            <option value="sawtooth">Sawtooth — agressif</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Durée simulation (s)</span>
+            <span class="param-value" id="durVal">10</span>
+          </div>
+          <input type="range" id="durRange" min="3" max="60" value="10" step="1">
+        </div>
+
+        <div>
+          <div class="param-row">
+            <span class="param-label">Fréquence base (Hz)</span>
+            <span class="param-value" id="freqVal">440</span>
+          </div>
+          <input type="range" id="freqRange" min="80" max="1200" value="440" step="10">
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="panel-right">
+
+    <div class="visualizer-wrap">
+      <div class="stage-overlay">
+        <span>x: -240</span>
+        <span id="stageTitle">SCÈNE SCRATCH</span>
+        <span>x: 240</span>
+      </div>
+      <canvas id="stage" width="480" height="360"></canvas>
+    </div>
+
+    <div class="transport">
+      <button class="btn-play" id="btnPlay" disabled>
+        <svg id="playIcon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+      <button class="btn-stop" id="btnStop" disabled>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+      </button>
+      <span class="time-display" id="timeDisplay">0.00 s</span>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="log-panel" id="logPanel">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>Chargez un fichier .sb3<br>pour commencer</span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <span><span class="status-dot" id="statusDot"></span><span id="statusText">En attente</span></span>
+  <span id="spriteCount">0 sprite(s)</span>
+  <span id="audioInfo">Web Audio API · HRTF</span>
+</footer>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let projectData = null;
+let sprites = [];
+let enabledSprites = new Set();
+let audioCtx = null;
+let animFrame = null;
+let playing = false;
+let startTime = 0;
+let duration = 10;
+let activeNodes = [];
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+const fileMeta = document.getElementById('fileMeta');
+const spriteSection = document.getElementById('spriteSection');
+const spriteList = document.getElementById('spriteList');
+const paramsSection = document.getElementById('paramsSection');
+const btnPlay = document.getElementById('btnPlay');
+const btnStop = document.getElementById('btnStop');
+const progressBar = document.getElementById('progressBar');
+const timeDisplay = document.getElementById('timeDisplay');
+const logPanel = document.getElementById('logPanel');
+const canvas = document.getElementById('stage');
+const ctx2d = canvas.getContext('2d');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const spriteCount = document.getElementById('spriteCount');
+const playIcon = document.getElementById('playIcon');
+
+// Param refs
+const distRange = document.getElementById('distRange');
+const distVal = document.getElementById('distVal');
+const heightRange = document.getElementById('heightRange');
+const heightVal = document.getElementById('heightVal');
+const volRange = document.getElementById('volRange');
+const volVal = document.getElementById('volVal');
+const waveType = document.getElementById('waveType');
+const durRange = document.getElementById('durRange');
+const durVal = document.getElementById('durVal');
+const freqRange = document.getElementById('freqRange');
+const freqVal = document.getElementById('freqVal');
+
+// ─── Param listeners ──────────────────────────────────────────────────────────
+distRange.oninput = () => distVal.textContent = distRange.value;
+heightRange.oninput = () => heightVal.textContent = heightRange.value;
+volRange.oninput = () => volVal.textContent = volRange.value + '%';
+durRange.oninput = () => { durVal.textContent = durRange.value; duration = +durRange.value; rebuildTrajectories(); drawStage(0); };
+freqRange.oninput = () => freqVal.textContent = freqRange.value;
+
+// ─── Logging ──────────────────────────────────────────────────────────────────
+function log(msg, type = 'info') {
+  const now = audioCtx ? audioCtx.currentTime.toFixed(2) : '0.00';
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">[${now}]</span><span class="log-msg ${type}">${msg}</span>`;
+  if (logPanel.querySelector('.empty-state')) logPanel.innerHTML = '';
+  logPanel.appendChild(line);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+function setStatus(text, active = false) {
+  statusText.textContent = text;
+  statusDot.className = 'status-dot' + (active ? ' active' : '');
+}
+
+// ─── Drop zone ────────────────────────────────────────────────────────────────
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) loadSb3(f);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadSb3(fileInput.files[0]); });
+
+// ─── .sb3 parser ─────────────────────────────────────────────────────────────
+async function loadSb3(file) {
+  if (!file.name.endsWith('.sb3')) { log('Fichier invalide — .sb3 requis', 'err'); return; }
+  log(`Chargement : ${file.name}`, 'info');
+  setStatus('Lecture…');
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const jsonFile = zip.file('project.json');
+    if (!jsonFile) throw new Error('project.json introuvable dans le .sb3');
+    const raw = await jsonFile.async('string');
+    projectData = JSON.parse(raw);
+
+    fileName.textContent = file.name;
+    fileMeta.textContent = `${(file.size / 1024).toFixed(1)} KB · Scratch ${projectData.meta?.semver || '?'}`;
+    fileInfo.style.display = 'block';
+
+    parseSprites();
+  } catch(e) {
+    log('Erreur : ' + e.message, 'err');
+    setStatus('Erreur');
+  }
+}
+
+function parseSprites() {
+  sprites = [];
+  enabledSprites.clear();
+
+  const targets = projectData.targets || [];
+  // Skip stage (isStage=true)
+  for (const t of targets) {
+    if (t.isStage) continue;
+    const simPositions = simulateScratch(t);
+    sprites.push({
+      name: t.name,
+      x: t.x || 0,
+      y: t.y || 0,
+      visible: t.visible !== false,
+      costumes: t.costumes?.length || 0,
+      simPositions,
+      color: randomColor(t.name),
+      baseFreq: 220 + Math.abs(hashStr(t.name) % 880),
+    });
+    enabledSprites.add(t.name);
+  }
+
+  log(`${sprites.length} sprite(s) détecté(s)`, 'ok');
+  sprites.forEach(s => log(`  · ${s.name} — pos initiale (${s.x.toFixed(0)}, ${s.y.toFixed(0)}) — ${s.simPositions.length} points simulés`, 'info'));
+
+  spriteCount.textContent = `${sprites.length} sprite(s)`;
+  renderSpriteList();
+  spriteSection.style.display = sprites.length ? 'block' : 'none';
+  paramsSection.style.display = sprites.length ? 'block' : 'none';
+  btnPlay.disabled = sprites.length === 0;
+  rebuildTrajectories();
+  drawStage(0);
+  setStatus('Prêt', false);
+}
+
+// ─── Scratch interpreter ─────────────────────────────────────────────────────
+// Simulates execution and records (x,y) at every motion step.
+// Supports: gotoxy, movesteps, turnleft/right, pointindirection, glide,
+//           setx/sety, changex/y, control_repeat/forever/if,
+//           data_setvariableto/changevariableby, procedures_call/definition.
+
+function simulateScratch(target) {
+  const blocks = target.blocks || {};
+  const MAX_OPS = 60000;
+
+  const vm = {
+    x: target.x || 0, y: target.y || 0, dir: 90,
+    vars: {}, positions: [{ x: target.x || 0, y: target.y || 0 }], ops: 0,
+  };
+
+  // Seed variables
+  for (const [, vdata] of Object.entries(target.variables || {}))
+    vm.vars[vdata[0]] = parseFloat(vdata[1]) || 0;
+
+  // Build procedure map: proccode → first body block id
+  const procDefs = {};
+  for (const [, b] of Object.entries(blocks)) {
+    if (b?.opcode === 'procedures_definition') {
+      const protoId = b.inputs?.custom_block?.[1];
+      const proto = protoId ? blocks[protoId] : null;
+      const proccode = proto?.mutation?.proccode || 'unknown';
+      procDefs[proccode] = b.next;
+    }
+  }
+
+  function resolveVal(block, inputName) {
+    const inp = block.inputs?.[inputName];
+    if (!inp) return 0;
+    const inner = inp[1];
+    if (Array.isArray(inner)) {
+      if (inner[0] === 12) return vm.vars[inner[1]] ?? 0; // variable
+      return parseFloat(inner[1]) || 0;
+    }
+    if (typeof inner === 'string' && blocks[inner]) return evalExpr(blocks[inner]);
+    return 0;
+  }
+
+  function evalExpr(b) {
+    if (!b?.opcode) return 0;
+    switch (b.opcode) {
+      case 'data_variable': { const n = Object.values(b.fields||{})[0]?.[0]; return vm.vars[n] ?? 0; }
+      case 'operator_add': return resolveVal(b,'NUM1') + resolveVal(b,'NUM2');
+      case 'operator_subtract': return resolveVal(b,'NUM1') - resolveVal(b,'NUM2');
+      case 'operator_multiply': return resolveVal(b,'NUM1') * resolveVal(b,'NUM2');
+      case 'operator_divide': { const d = resolveVal(b,'NUM2'); return d ? resolveVal(b,'NUM1')/d : 0; }
+      default: return 0;
+    }
+  }
+
+  function record() {
+    const last = vm.positions[vm.positions.length-1];
+    if (!last || Math.abs(last.x-vm.x)>0.5 || Math.abs(last.y-vm.y)>0.5)
+      vm.positions.push({ x: vm.x, y: vm.y });
+  }
+
+  function moveSteps(n) {
+    const rad = (vm.dir - 90) * Math.PI / 180;
+    vm.x = clamp(vm.x + n * Math.cos(rad), -240, 240);
+    vm.y = clamp(vm.y + n * Math.sin(rad), -180, 180);
+    record();
+  }
+
+  function execChain(blockId, depth) {
+    if (depth > 50) return;
+    let id = blockId;
+    while (id && vm.ops < MAX_OPS) {
+      const b = blocks[id];
+      if (!b?.opcode) break;
+      vm.ops++;
+      switch (b.opcode) {
+        case 'motion_gotoxy':
+          vm.x = clamp(resolveVal(b,'X'), -240, 240);
+          vm.y = clamp(resolveVal(b,'Y'), -180, 180);
+          record(); break;
+        case 'motion_movesteps': moveSteps(resolveVal(b,'STEPS')); break;
+        case 'motion_turnright': vm.dir = (vm.dir + resolveVal(b,'DEGREES')) % 360; break;
+        case 'motion_turnleft':  vm.dir = ((vm.dir - resolveVal(b,'DEGREES')) % 360 + 360) % 360; break;
+        case 'motion_pointindirection': vm.dir = ((resolveVal(b,'DIRECTION')) % 360 + 360) % 360; break;
+        case 'motion_glidesecstoxy':
+          vm.x = clamp(resolveVal(b,'X'), -240, 240);
+          vm.y = clamp(resolveVal(b,'Y'), -180, 180);
+          record(); break;
+        case 'motion_setx': vm.x = clamp(resolveVal(b,'X'), -240, 240); record(); break;
+        case 'motion_sety': vm.y = clamp(resolveVal(b,'Y'), -180, 180); record(); break;
+        case 'motion_changexby': vm.x = clamp(vm.x + resolveVal(b,'DX'), -240, 240); record(); break;
+        case 'motion_changeyby': vm.y = clamp(vm.y + resolveVal(b,'DY'), -180, 180); record(); break;
+        case 'data_setvariableto': {
+          const n = b.fields?.VARIABLE?.[0];
+          if (n !== undefined) vm.vars[n] = parseFloat(resolveVal(b,'VALUE')) || 0; break;
+        }
+        case 'data_changevariableby': {
+          const n = b.fields?.VARIABLE?.[0];
+          if (n !== undefined) vm.vars[n] = (vm.vars[n]||0) + (parseFloat(resolveVal(b,'VALUE'))||0); break;
+        }
+        case 'control_repeat': {
+          const times = Math.min(Math.round(resolveVal(b,'TIMES')), 5000);
+          const sub = b.inputs?.SUBSTACK?.[1];
+          for (let i = 0; i < times && vm.ops < MAX_OPS; i++) execChain(sub, depth+1);
+          break;
+        }
+        case 'control_forever': {
+          const sub = b.inputs?.SUBSTACK?.[1];
+          for (let i = 0; i < 8 && vm.ops < MAX_OPS; i++) execChain(sub, depth+1);
+          break;
+        }
+        case 'control_if':
+        case 'control_if_else': execChain(b.inputs?.SUBSTACK?.[1], depth+1); break;
+        case 'procedures_call': {
+          const pc = b.mutation?.proccode;
+          if (pc && procDefs[pc]) execChain(procDefs[pc], depth+1);
+          break;
+        }
+      }
+      id = b.next || null;
+    }
+  }
+
+  const hats = Object.values(blocks)
+    .filter(b => b?.opcode === 'event_whenflagclicked' && b.next)
+    .map(b => b.next);
+
+  if (hats.length === 0) {
+    // Fallback: circular path
+    const r = 100 + Math.abs(hashStr(target.name) % 100);
+    const ph = (hashStr(target.name) % 360) * Math.PI / 180;
+    for (let i = 0; i <= 12; i++) {
+      const a = ph + (i/12) * 2 * Math.PI;
+      vm.positions.push({ x: r*Math.cos(a), y: r*Math.sin(a) });
+    }
+  } else {
+    hats.forEach(id => execChain(id, 0));
+  }
+
+  return vm.positions;
+}
+
+// ─── Sprite list UI ──────────────────────────────────────────────────────────
+function renderSpriteList() {
+  spriteList.innerHTML = '';
+  sprites.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'sprite-item' + (enabledSprites.has(s.name) ? ' active' : '');
+    item.innerHTML = `
+      <div>
+        <div class="sprite-name" style="color:${s.color}">${s.name}</div>
+        <div class="sprite-meta">${s.simPositions.length} points · freq ${s.baseFreq.toFixed(0)} Hz</div>
+      </div>
+      <div class="sprite-toggle ${enabledSprites.has(s.name) ? 'on' : ''}" data-name="${s.name}"></div>
+    `;
+    item.querySelector('.sprite-toggle').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const n = e.target.dataset.name;
+      if (enabledSprites.has(n)) enabledSprites.delete(n);
+      else enabledSprites.add(n);
+      renderSpriteList();
+    });
+    spriteList.appendChild(item);
+  });
+}
+
+// ─── Pre-compute full trajectory path for each sprite ─────────────────────────
+// Trajectories come directly from simulation — no need to resample
+function rebuildTrajectories() {
+  sprites.forEach(s => { s.trajectory = s.simPositions; });
+}
+
+// ─── Canvas drawing ───────────────────────────────────────────────────────────
+function scratchToCanvas(x, y, W, H) {
+  return {
+    sx: W / 2 + (x / 240) * (W / 2),
+    sy: H / 2 - (y / 180) * (H / 2),
+  };
+}
+
+function drawStage(t) {
+  const W = canvas.width, H = canvas.height;
+  ctx2d.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx2d.strokeStyle = 'rgba(124,106,255,0.07)';
+  ctx2d.lineWidth = 1;
+  for (let x = 0; x <= W; x += 40) { ctx2d.beginPath(); ctx2d.moveTo(x,0); ctx2d.lineTo(x,H); ctx2d.stroke(); }
+  for (let y = 0; y <= H; y += 40) { ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(W,y); ctx2d.stroke(); }
+
+  // Axes
+  ctx2d.strokeStyle = 'rgba(124,106,255,0.22)';
+  ctx2d.lineWidth = 1;
+  ctx2d.beginPath(); ctx2d.moveTo(W/2,0); ctx2d.lineTo(W/2,H); ctx2d.stroke();
+  ctx2d.beginPath(); ctx2d.moveTo(0,H/2); ctx2d.lineTo(W,H/2); ctx2d.stroke();
+
+  const progress = duration > 0 ? Math.min(t / duration, 1) : 0;
+  sprites.forEach(s => {
+    if (!enabledSprites.has(s.name)) return;
+    const traj = s.trajectory;
+    if (!traj || traj.length < 2) return;
+    const passedStep = Math.floor(progress * (traj.length - 1));
+
+    // ── 1. Full trajectory (ghost, dimmed) ──────────────────────────────────
+    ctx2d.beginPath();
+    ctx2d.setLineDash([4, 6]);
+    ctx2d.lineWidth = 1;
+    ctx2d.strokeStyle = s.color + '28';
+    for (let i = 0; i < traj.length; i++) {
+      const { sx, sy } = scratchToCanvas(traj[i].x, traj[i].y, W, H);
+      if (i === 0) ctx2d.moveTo(sx, sy); else ctx2d.lineTo(sx, sy);
+    }
+    ctx2d.stroke();
+    ctx2d.setLineDash([]);
+
+    // Waypoint dots on full trajectory
+    traj.forEach((p, i) => {
+      if (i % Math.ceil((traj.length) / 12) !== 0) return;
+      const { sx, sy } = scratchToCanvas(p.x, p.y, W, H);
+      ctx2d.fillStyle = s.color + '30';
+      ctx2d.beginPath(); ctx2d.arc(sx, sy, 3, 0, Math.PI * 2); ctx2d.fill();
+    });
+
+    // ── 2. Elapsed trail (bright, fading toward current pos) ────────────────
+    if (passedStep > 0) {
+      for (let i = 1; i <= passedStep && i < traj.length; i++) {
+        const alpha = 0.15 + 0.7 * (i / passedStep);
+        const width = 0.8 + 1.8 * (i / passedStep);
+        const { sx: x0, sy: y0 } = scratchToCanvas(traj[i-1].x, traj[i-1].y, W, H);
+        const { sx: x1, sy: y1 } = scratchToCanvas(traj[i].x,   traj[i].y,   W, H);
+        ctx2d.beginPath();
+        ctx2d.moveTo(x0, y0);
+        ctx2d.lineTo(x1, y1);
+        ctx2d.strokeStyle = s.color + Math.floor(alpha * 255).toString(16).padStart(2,'0');
+        ctx2d.lineWidth = width;
+        ctx2d.stroke();
+      }
+    }
+
+    // ── 3. Current position ──────────────────────────────────────────────────
+    const pos = getSpritePos(s, t);
+    const { sx, sy } = scratchToCanvas(pos.x, pos.y, W, H);
+
+    // Dashed line to listener
+    ctx2d.strokeStyle = s.color + '22';
+    ctx2d.lineWidth = 1;
+    ctx2d.setLineDash([3, 6]);
+    ctx2d.beginPath(); ctx2d.moveTo(W/2, H/2); ctx2d.lineTo(sx, sy); ctx2d.stroke();
+    ctx2d.setLineDash([]);
+
+    // Pulse rings (audio emission)
+    const rings = 3;
+    for (let r = 0; r < rings; r++) {
+      const ph = ((t * 1.8 + r / rings) % 1);
+      const radius = 8 + ph * 36;
+      const alpha = (1 - ph) * (playing ? 0.55 : 0.2);
+      ctx2d.strokeStyle = s.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+      ctx2d.lineWidth = playing ? 1.5 : 0.8;
+      ctx2d.beginPath(); ctx2d.arc(sx, sy, radius, 0, Math.PI * 2); ctx2d.stroke();
+    }
+
+    // Glow halo
+    const grd = ctx2d.createRadialGradient(sx, sy, 0, sx, sy, 18);
+    grd.addColorStop(0, s.color + '55');
+    grd.addColorStop(1, s.color + '00');
+    ctx2d.fillStyle = grd;
+    ctx2d.beginPath(); ctx2d.arc(sx, sy, 18, 0, Math.PI * 2); ctx2d.fill();
+
+    // Main dot
+    ctx2d.fillStyle = s.color;
+    ctx2d.beginPath(); ctx2d.arc(sx, sy, 8, 0, Math.PI * 2); ctx2d.fill();
+
+    // Inner white dot
+    ctx2d.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx2d.beginPath(); ctx2d.arc(sx, sy, 3, 0, Math.PI * 2); ctx2d.fill();
+
+    // Label background pill
+    const label = s.name.slice(0, 10);
+    ctx2d.font = '500 10px DM Sans, sans-serif';
+    const tw = ctx2d.measureText(label).width;
+    const lx = sx - tw / 2 - 5;
+    const ly = sy - 28;
+    ctx2d.fillStyle = 'rgba(10,10,15,0.72)';
+    ctx2d.beginPath();
+    ctx2d.roundRect(lx, ly, tw + 10, 16, 4);
+    ctx2d.fill();
+    ctx2d.fillStyle = '#fff';
+    ctx2d.textAlign = 'left';
+    ctx2d.fillText(label, lx + 5, ly + 11);
+
+    // Coords below
+    ctx2d.fillStyle = s.color + 'bb';
+    ctx2d.font = '9px Space Mono, monospace';
+    ctx2d.textAlign = 'center';
+    ctx2d.fillText(`${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}`, sx, sy + 22);
+  });
+
+  // Listener (drawn last, always on top)
+  const lgrd = ctx2d.createRadialGradient(W/2, H/2, 0, W/2, H/2, 18);
+  lgrd.addColorStop(0, 'rgba(255,255,255,0.12)');
+  lgrd.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx2d.fillStyle = lgrd;
+  ctx2d.beginPath(); ctx2d.arc(W/2, H/2, 18, 0, Math.PI*2); ctx2d.fill();
+  ctx2d.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx2d.beginPath(); ctx2d.arc(W/2, H/2, 10, 0, Math.PI*2); ctx2d.fill();
+  ctx2d.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx2d.lineWidth = 1.5;
+  ctx2d.beginPath(); ctx2d.arc(W/2, H/2, 10, 0, Math.PI*2); ctx2d.stroke();
+  ctx2d.font = '12px serif';
+  ctx2d.textAlign = 'center';
+  ctx2d.fillStyle = '#fff';
+  ctx2d.fillText('👂', W/2, H/2 + 5);
+}
+
+function getSpritePos(sprite, t) {
+  const pts = sprite.simPositions;
+  if (!pts || pts.length === 0) return { x: sprite.x, y: sprite.y };
+  if (pts.length === 1) return pts[0];
+  const progress = duration > 0 ? clamp(t / duration, 0, 1) : 0;
+  const raw = progress * (pts.length - 1);
+  const idx = Math.min(Math.floor(raw), pts.length - 2);
+  const frac = raw - idx;
+  const a = pts[idx], b = pts[idx + 1];
+  return { x: a.x + (b.x - a.x) * smoothstep(frac), y: a.y + (b.y - a.y) * smoothstep(frac) };
+}
+
+function smoothstep(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+// ─── Audio engine ─────────────────────────────────────────────────────────────
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    log('AudioContext initialisé · HRTF activé', 'ok');
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function startPlayback() {
+  initAudio();
+  stopPlayback(false);
+  playing = true;
+  startTime = audioCtx.currentTime;
+  duration = +durRange.value;
+
+  // Play icon → pause
+  playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+
+  const maxDist = +distRange.value;
+  const zHeight = +heightRange.value;
+  const masterVol = +volRange.value / 100;
+  const wave = waveType.value;
+  const baseFreq = +freqRange.value;
+
+  const masterGain = audioCtx.createGain();
+  masterGain.gain.value = masterVol;
+  masterGain.connect(audioCtx.destination);
+  activeNodes.push(masterGain);
+
+  sprites.forEach((s, i) => {
+    if (!enabledSprites.has(s.name)) return;
+
+    const freq = baseFreq * (1 + i * 0.15);
+    const panner = audioCtx.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = 1;
+    panner.maxDistance = maxDist + 1;
+    panner.rolloffFactor = 1;
+    panner.connect(masterGain);
+
+    const osc = audioCtx.createOscillator();
+    osc.type = wave;
+    osc.frequency.value = freq;
+
+    // Slight frequency modulation with LFO for each sprite
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    lfo.frequency.value = 0.3 + i * 0.1;
+    lfoGain.gain.value = freq * 0.02;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.4;
+    osc.connect(gainNode);
+    gainNode.connect(panner);
+
+    // Schedule positions over time using AudioParam automation
+    const steps = 120;
+    for (let step = 0; step <= steps; step++) {
+      const t = (step / steps) * duration;
+      const when = startTime + t;
+      const pos = getSpritePos(s, t);
+      // Map Scratch coords (-240..240, -180..180) to 3D space
+      const px = (pos.x / 240) * maxDist;
+      const py = zHeight;
+      const pz = -(pos.y / 180) * maxDist; // z is depth in Web Audio
+      panner.positionX.linearRampToValueAtTime(px, when);
+      panner.positionY.linearRampToValueAtTime(py, when);
+      panner.positionZ.linearRampToValueAtTime(pz, when);
+    }
+
+    lfo.start(startTime);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.1);
+    lfo.stop(startTime + duration + 0.1);
+
+    activeNodes.push(osc, lfo, lfoGain, gainNode, panner);
+    log(`▶ ${s.name} · ${freq.toFixed(0)} Hz · ${wave}`, 'ok');
+  });
+
+  setStatus('Lecture en cours', true);
+  btnStop.disabled = false;
+  btnPlay.disabled = false;
+
+  // Animation loop
+  function tick() {
+    if (!playing) return;
+    const elapsed = audioCtx.currentTime - startTime;
+    const t = Math.min(elapsed, duration);
+    const pct = (t / duration) * 100;
+    progressBar.style.width = pct + '%';
+    timeDisplay.textContent = t.toFixed(2) + ' s';
+    drawStage(t);
+    if (elapsed < duration) {
+      animFrame = requestAnimationFrame(tick);
+    } else {
+      finishPlayback();
+    }
+  }
+  animFrame = requestAnimationFrame(tick);
+}
+
+function finishPlayback() {
+  playing = false;
+  playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  progressBar.style.width = '100%';
+  setStatus('Terminé', false);
+  log('Lecture terminée', 'ok');
+  btnStop.disabled = true;
+}
+
+function stopPlayback(log_ = true) {
+  playing = false;
+  cancelAnimationFrame(animFrame);
+  activeNodes.forEach(n => { try { n.stop?.(); n.disconnect?.(); } catch(e){} });
+  activeNodes = [];
+  progressBar.style.width = '0%';
+  timeDisplay.textContent = '0.00 s';
+  playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  setStatus('En attente', false);
+  btnStop.disabled = true;
+  if (log_) log('Arrêt', 'warn');
+  drawStage(0);
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playing) { stopPlayback(); }
+  else { startPlayback(); }
+});
+btnStop.addEventListener('click', () => stopPlayback());
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function randomColor(str) {
+  const colors = ['#7c6aff','#ff6a9b','#6affd4','#ffb347','#6ae5ff','#d46aff','#ff9f6a'];
+  return colors[Math.abs(hashStr(str)) % colors.length];
+}
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+// Initial canvas render
+drawStage(0);
+</script>
+</body>
+</html>
